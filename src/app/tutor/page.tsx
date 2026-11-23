@@ -107,17 +107,58 @@ I am your personalized IITian mentor for **Physics, Chemistry, and Mathematics**
     }
   }, [initialQ]);
 
-  // Image upload handler
-  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Client-side image compressor: downscales large smartphone photos to max 1280px (<250KB)
+  const compressImage = (file: File): Promise<{ base64: string; mime: string }> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const maxDim = 1280;
+          let width = img.width;
+          let height = img.height;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, width, height);
+            const compressed = canvas.toDataURL('image/jpeg', 0.82);
+            resolve({ base64: compressed, mime: 'image/jpeg' });
+            return;
+          }
+          resolve({ base64: e.target?.result as string, mime: file.type || 'image/jpeg' });
+        };
+        img.onerror = () => {
+          resolve({ base64: e.target?.result as string, mime: file.type || 'image/jpeg' });
+        };
+        img.src = e.target?.result as string;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Image upload handler with auto-compression
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    setSelectedImageMime(file.type || 'image/jpeg');
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      setSelectedImage(event.target?.result as string);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const { base64, mime } = await compressImage(file);
+      setSelectedImage(base64);
+      setSelectedImageMime(mime);
+    } catch (err) {
+      console.error('Failed to compress image:', err);
+    }
   };
 
   const handleStartNewConversation = () => {
@@ -239,30 +280,51 @@ What concept, formula, or problem are we working on? You can type your doubt or 
 
       const data = await res.json();
 
+      const replyContent =
+        data.reply ||
+        (data.error
+          ? `⚠️ **Mentor Notice**: ${data.error}\n\n*Please wait a few seconds and try sending again!*`
+          : `⚠️ Sorry, I could not process your request at this moment. Please try again!`);
+
+      const assistantMsg: ChatMessage = {
+        id: `assistant_${Date.now()}`,
+        role: 'assistant',
+        content: replyContent,
+        timestamp: Date.now(),
+        mode,
+      };
+
+      const finalMessages = [...updatedMessages, assistantMsg];
+      const finalConv: Conversation = {
+        ...updatedConv,
+        messages: finalMessages,
+        updatedAt: Date.now(),
+      };
+
+      StorageService.saveConversation(finalConv);
+      setConversations((prev) => prev.map((c) => (c.id === finalConv.id ? finalConv : c)));
+
       if (data.reply) {
-        const assistantMsg: ChatMessage = {
-          id: `assistant_${Date.now()}`,
-          role: 'assistant',
-          content: data.reply,
-          timestamp: Date.now(),
-          mode,
-        };
-
-        const finalMessages = [...updatedMessages, assistantMsg];
-        const finalConv: Conversation = {
-          ...updatedConv,
-          messages: finalMessages,
-          updatedAt: Date.now(),
-        };
-
-        StorageService.saveConversation(finalConv);
-        setConversations((prev) => prev.map((c) => (c.id === finalConv.id ? finalConv : c)));
-
         // Award +5 XP for interacting with AI tutor
         StorageService.addXP(5);
       }
     } catch (err) {
       console.error('Failed to get AI tutor reply', err);
+      const networkErrMsg: ChatMessage = {
+        id: `assistant_${Date.now()}`,
+        role: 'assistant',
+        content: `⚠️ **Connection Error**: Unable to reach the AI Mentor service. Please check your internet connection or reload the page and try again.`,
+        timestamp: Date.now(),
+        mode,
+      };
+      const finalMessages = [...updatedMessages, networkErrMsg];
+      const finalConv: Conversation = {
+        ...updatedConv,
+        messages: finalMessages,
+        updatedAt: Date.now(),
+      };
+      StorageService.saveConversation(finalConv);
+      setConversations((prev) => prev.map((c) => (c.id === finalConv.id ? finalConv : c)));
     } finally {
       setLoading(false);
     }

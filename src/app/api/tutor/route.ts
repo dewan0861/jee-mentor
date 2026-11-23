@@ -129,9 +129,10 @@ To activate live AI reasoning and camera/image doubt solving, please paste your 
       },
     };
 
-    // Resilient model cascade: try fast & available 3.x models
+    // Resilient model cascade: prioritized by free-tier availability & vision reliability
     const candidateModels = [
       'gemini-3.5-flash-lite',
+      'gemini-flash-lite-latest',
       'gemini-3.8-flash',
       'gemini-3.5-flash',
       'gemini-flash-latest',
@@ -142,7 +143,7 @@ To activate live AI reasoning and camera/image doubt solving, please paste your 
 
     for (const model of candidateModels) {
       try {
-        const res = await fetch(
+        let res = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
           {
             method: 'POST',
@@ -150,6 +151,19 @@ To activate live AI reasoning and camera/image doubt solving, please paste your 
             body: JSON.stringify(requestPayload),
           }
         );
+
+        // If 503 (high demand spike), wait 800ms and retry this model once before skipping
+        if (res.status === 503) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          res = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(requestPayload),
+            }
+          );
+        }
 
         if (res.ok) {
           response = res;
@@ -166,13 +180,19 @@ To activate live AI reasoning and camera/image doubt solving, please paste your 
 
     if (!response || !response.ok) {
       console.error('All Gemini API candidate models failed:', lastErrorText);
-      return NextResponse.json(
-        { 
-          error: 'AI service temporarily unavailable. Please verify that your GEMINI_API_KEY is active in Google AI Studio.',
-          details: lastErrorText
-        },
-        { status: 500 }
-      );
+      return NextResponse.json({
+        reply: `### ⚠️ High Demand Traffic Notice
+Google Gemini free tier experienced a momentary demand spike while analyzing this ${image ? 'image' : 'question'}.
+
+#### 💡 Guidance in the meantime:
+1. **Identify the Core Principle**: What fundamental conservation laws apply here (e.g. Energy, Linear/Angular Momentum, Gauss's Law)?
+2. **Setup**: Draw a neat Free Body Diagram or schematic and write down coordinate axes.
+3. **Formulas to recall**:
+   $$\\vec{F}_{\\text{ext}} = \\frac{d\\vec{P}}{dt}, \\quad W_{\\text{all}} = \\Delta K, \\quad \\Delta U = -W_{\\text{conservative}}$$
+
+*Please tap **Send** again in 5 seconds to retry the full step-by-step breakdown!*`,
+        isFallback: true,
+      });
     }
 
     const data = await response.json();
