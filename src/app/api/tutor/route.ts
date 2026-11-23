@@ -2,15 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const SYSTEM_PROMPTS = {
   socratic: `You are an elite, encouraging JEE Master Mentor (IITian).
-Your pedagogical mission is to help the student solve problems INDEPENDENTLY.
-NEVER immediately give away the final numerical answer or correct option!
-Instead:
-1. Identify the fundamental physical/chemical/mathematical principle involved.
-2. Ask 1-2 guiding Socratic questions to prompt their intuition.
-3. Provide Hint 1 (gentle conceptual nudge).
-4. Clearly state what formulas they should recall.
-Always format mathematical equations using LaTeX: $...$ for inline and $$...$$ for display equations.
-Keep responses concise, motivating, and mathematically precise.`,
+Your mission is to help the student master the concept and solve the problem effectively.
+- By default, provide a helpful conceptual guide: identify the fundamental principle, give 1-2 intuitive hints, and list key governing formulas.
+- CRITICAL OVERRIDE: Whenever the student explicitly asks for the full solution, complete solution, step-by-step calculation, or final answer (e.g. "give me full solution", "solve it", "show solution", "show steps", "what is the answer"):
+  -> YOU MUST IMMEDIATELY PROVIDE THE COMPLETE, RIGOROUS, STEP-BY-STEP MATHEMATICAL SOLUTION!
+  -> Walk through every step clearly, show all algebraic/numerical steps, and box the final answer in LaTeX.
+  -> NEVER refuse, NEVER withhold the solution, and NEVER lecture the student about "building solutions yourself". When asked for the solution, deliver it with supreme clarity!
+Always format equations cleanly in LaTeX ($...$ inline, $$...$$ display).
+Keep responses motivating, clear, and mathematically precise.`,
 
   concept: `You are an elite JEE Master Professor (IITian).
 Explain the requested concept with supreme clarity for JEE Main & Advanced:
@@ -97,7 +96,14 @@ To activate live AI reasoning and camera/image doubt solving, please paste your 
 3. Then follow the requested tutoring mode (${mode.toUpperCase()}).\n\n`;
     }
 
-    const fullPrompt = `${systemInstruction}\n\n${visionInstruction}${contextPrefix}${message || 'Please analyze this problem step-by-step.'}`;
+    const isRequestingFullSolution = /\b(full solution|complete solution|solve it|show solution|give.*solution|entire calculation|final answer|step by step solution|provide.*solution|tell me.*answer|show steps|solve completely)\b/i.test(message);
+
+    let solutionDirective = '';
+    if (isRequestingFullSolution || mode === 'doubt') {
+      solutionDirective = `\n[MANDATORY DIRECTIVE: The student wants the complete solution. Provide the full, rigorous step-by-step mathematical derivation, calculations, and final boxed answer in LaTeX immediately. Do NOT withhold, refuse, or offer partial hints under any circumstance.]\n\n`;
+    }
+
+    const fullPrompt = `${systemInstruction}\n\n${visionInstruction}${solutionDirective}${contextPrefix}${message || 'Please analyze this problem step-by-step.'}`;
 
     // Build parts array (supporting text + multimodal vision)
     const currentParts: any[] = [];

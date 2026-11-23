@@ -514,6 +514,33 @@ What concept, formula, or problem are we working on? You can type your doubt or 
           </div>
         )}
 
+        {/* Quick follow-up chips */}
+        {messages.length > 1 && !loading && (
+          <div className="mb-2 flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+            <button
+              type="button"
+              onClick={() => handleSendMessage("Please provide the complete step-by-step full solution with all calculations and the final boxed answer.")}
+              className="flex items-center gap-1 rounded-lg border border-indigo-200 bg-indigo-50/90 px-2.5 py-1 font-semibold text-indigo-700 hover:bg-indigo-100 dark:border-indigo-800 dark:bg-indigo-950/50 dark:text-indigo-300 transition-colors shrink-0"
+            >
+              <span>📝 Give Full Solution</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSendMessage("Can you give me a conceptual hint to guide my intuition without giving away the answer yet?")}
+              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 transition-colors shrink-0"
+            >
+              <span>💡 Just a Hint</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleSendMessage("Are there any exam speed shortcuts, symmetry tricks, or option elimination methods for this?")}
+              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-800 dark:text-slate-300 transition-colors shrink-0"
+            >
+              <span>⚡ Shortcut Trick</span>
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
         <div className="flex items-center gap-2 rounded-2xl border border-slate-300 bg-white p-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
           {/* Hidden file inputs */}
