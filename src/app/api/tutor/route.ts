@@ -129,36 +129,47 @@ To activate live AI reasoning and camera/image doubt solving, please paste your 
       },
     };
 
-    // Primary attempt: gemini-2.5-flash
-    let response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(requestPayload),
-      }
-    );
+    // Resilient model cascade: try fast & available 3.x models
+    const candidateModels = [
+      'gemini-3.5-flash-lite',
+      'gemini-3.8-flash',
+      'gemini-3.5-flash',
+      'gemini-flash-latest',
+    ];
 
-    // Fallback attempt: gemini-1.5-flash if primary fails
-    if (!response.ok) {
-      console.warn('Gemini 2.5 Flash failed, falling back to Gemini 1.5 Flash...');
-      response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestPayload),
+    let response: Response | null = null;
+    let lastErrorText = '';
+
+    for (const model of candidateModels) {
+      try {
+        const res = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestPayload),
+          }
+        );
+
+        if (res.ok) {
+          response = res;
+          break;
+        } else {
+          lastErrorText = await res.text();
+          console.warn(`Model ${model} returned ${res.status}, trying next fallback...`);
         }
-      );
+      } catch (err: any) {
+        lastErrorText = err.message || String(err);
+        console.warn(`Model ${model} network error, trying next fallback...`);
+      }
     }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Gemini API Error (Both models):', errorText);
+    if (!response || !response.ok) {
+      console.error('All Gemini API candidate models failed:', lastErrorText);
       return NextResponse.json(
         { 
           error: 'AI service temporarily unavailable. Please verify that your GEMINI_API_KEY is active in Google AI Studio.',
-          details: errorText
+          details: lastErrorText
         },
         { status: 500 }
       );
