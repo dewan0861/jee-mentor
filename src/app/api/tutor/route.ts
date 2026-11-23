@@ -34,29 +34,50 @@ Provide an ultra-crisp, high-yield revision card:
 2. Meaning of each variable and SI units.
 3. Limitations / assumptions.
 4. 1-line mnemonics or memory hooks for fast recall during exam pressure.`,
+
+  hint_tree: `You are a JEE 3-Step Hint Tree Engine.
+Break down the solution into three distinct, progressive levels:
+- **Level 1 (Concept Anchor)**: Which fundamental law/theorem applies here?
+- **Level 2 (Equation Setup)**: How to set up the boundary conditions or coordinate equations without simplifying yet.
+- **Level 3 (Execution & Shortcut)**: The algebraic resolution and answer check.
+Use LaTeX for all mathematical expressions.`,
+
+  quiz: `You are an interactive JEE Quiz Master (IITian).
+When asked about a topic:
+1. Pose ONE high-yield, challenging JEE-level multiple-choice or numerical problem on that topic.
+2. Do NOT reveal the solution or answer yet!
+3. Ask the student to solve it and reply with their approach or option.
+4. Once the student replies, evaluate their answer, point out flaws or commend their speed, and explain the fastest technique.`,
 };
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, mode = 'socratic', questionContext, history = [] } = await req.json();
+    const { 
+      message = '', 
+      mode = 'socratic', 
+      questionContext, 
+      history = [],
+      image,
+      imageMime = 'image/jpeg'
+    } = await req.json();
 
     const apiKey = process.env.GEMINI_API_KEY;
 
-    // Graceful fallback if user hasn't added their free API key yet
+    // Graceful fallback if user hasn't added their API key yet
     if (!apiKey) {
       return NextResponse.json({
         reply: `### 🎓 JEE Mentor Hint (Offline Mode)
-To activate live AI reasoning for any JEE question, please paste your free Google AI Studio API key in \`.env.local\` as:
+To activate live AI reasoning and camera/image doubt solving, please paste your free Google AI Studio API key in \`.env.local\` as:
 \`GEMINI_API_KEY=your_key_here\`
 
 ---
 #### Socratic Guidance:
-1. **Identify the Core Concept**: What are the conserved quantities in this setup (e.g., energy, momentum, charge)?
-2. **Formula Check**:
-   $$\\vec{F} = \\frac{d\\vec{p}}{dt}, \\quad E = -\\vec{\\nabla}V, \\quad \\int_a^b f(x)dx = \\int_a^b f(a+b-x)dx$$
-3. **Common Trap**: Check if standard approximations hold (e.g., small angles, negligible friction, ideal gas behavior).
+1. **Identify the Core Principle**: What are the conserved quantities (e.g., energy, momentum, charge, mass balance)?
+2. **Key Formulas**:
+   $$\\vec{F} = \\frac{d\\vec{p}}{dt}, \\quad \\Delta U = -W_{\\text{internal}}, \\quad \\oint \\vec{E} \\cdot d\\vec{A} = \\frac{q_{\\text{in}}}{\\varepsilon_0}$$
+3. **Common Trap**: Look out for boundary conditions, sign conventions, and non-inertial frames!
 
-*Try writing out the first line of the governing equation!*`,
+*Try setting up the free-body diagram or algebraic system of equations!*`,
         isOfflineMode: true,
       });
     }
@@ -65,10 +86,31 @@ To activate live AI reasoning for any JEE question, please paste your free Googl
 
     let contextPrefix = '';
     if (questionContext) {
-      contextPrefix = `[Question Under Discussion (${questionContext.subject?.toUpperCase()} - ${questionContext.chapterName || ''})]:\n"${questionContext.questionText}"\n\nStudent Query: `;
+      contextPrefix = `[Question Under Discussion (${questionContext.subject?.toUpperCase()} - ${questionContext.chapterName || ''})]:\n"${questionContext.questionText}"\n\n`;
     }
 
-    const fullPrompt = `${systemInstruction}\n\n${contextPrefix}${message}`;
+    let visionInstruction = '';
+    if (image) {
+      visionInstruction = `[Student has attached an image/photo of a problem or diagram]:
+1. First, accurately transcribe the handwritten/printed text, equations, and diagram values into LaTeX.
+2. State what topic and chapter this belongs to.
+3. Then follow the requested tutoring mode (${mode.toUpperCase()}).\n\n`;
+    }
+
+    const fullPrompt = `${systemInstruction}\n\n${visionInstruction}${contextPrefix}${message || 'Please analyze this problem step-by-step.'}`;
+
+    // Build parts array (supporting text + multimodal vision)
+    const currentParts: any[] = [];
+    if (image) {
+      const cleanBase64 = image.includes('base64,') ? image.split('base64,')[1] : image;
+      currentParts.push({
+        inlineData: {
+          mimeType: imageMime || 'image/jpeg',
+          data: cleanBase64,
+        },
+      });
+    }
+    currentParts.push({ text: fullPrompt });
 
     const requestPayload = {
       contents: [
@@ -78,12 +120,12 @@ To activate live AI reasoning for any JEE question, please paste your free Googl
         })),
         {
           role: 'user',
-          parts: [{ text: fullPrompt }],
+          parts: currentParts,
         },
       ],
       generationConfig: {
-        temperature: 0.4,
-        maxOutputTokens: 1200,
+        temperature: 0.35,
+        maxOutputTokens: 1800,
       },
     };
 

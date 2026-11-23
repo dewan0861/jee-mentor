@@ -3,6 +3,7 @@ import './globals.css';
 import { Navbar } from '@/components/Navbar';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { InstallPwaPrompt } from '@/components/InstallPwaPrompt';
+import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata: Metadata = {
   title: 'JEE AI Mentor — Precision JEE Main & Advanced Preparation',
@@ -37,12 +38,14 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icons/icon-192.png" />
       </head>
       <body className="bg-slate-50 text-slate-900 antialiased selection:bg-indigo-500 selection:text-white">
-        <div className="flex min-h-screen flex-col">
-          <Navbar />
-          <main className="flex-1 pb-20 md:pb-12">{children}</main>
-          <MobileBottomNav />
-          <InstallPwaPrompt />
-        </div>
+        <AuthProvider>
+          <div className="flex min-h-screen flex-col">
+            <Navbar />
+            <main className="flex-1 pb-20 md:pb-12">{children}</main>
+            <MobileBottomNav />
+            <InstallPwaPrompt />
+          </div>
+        </AuthProvider>
 
         {/* Service Worker Auto-Registration Script */}
         <script

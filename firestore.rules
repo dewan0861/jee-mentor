@@ -1,0 +1,326 @@
+rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: /users/{userId}
+// Document ID: Firebase Auth UID (userId)
+// Fields:
+//   - profile: map (optional) - UserProfile data:
+//       - name: string (optional, max 100 chars)
+//       - classLevel: int/string (optional, 11, 12, or 'dropper')
+//       - targetYear: number (optional, 2020-2040)
+//       - targetExam: string (optional, 'jee_main' | 'jee_advanced')
+//       - preparationLevel: string (optional, 'beginner' | 'intermediate' | 'advanced')
+//       - targetRank: string (optional, max 100 chars)
+//       - dailyStudyHours: number (optional, 0-24)
+//       - weakSubjects: list (optional, max 10 items)
+//       - isOnboarded: bool (optional)
+//       - joinedAt: number (optional)
+//   - gamification: map (optional) - GamificationProfile data:
+//       - xp: number (optional, >= 0)
+//       - level: number (optional, >= 0)
+//       - rankTitle: string (optional, max 100 chars)
+//       - unlockedBadges: list of strings (optional, max 100 items)
+//       - completedFocusBlocks: number (optional, >= 0)
+//   - attempts: list of maps (optional, max 1000 items)
+//   - errorBook: list of maps (optional, max 500 items)
+//   - completedTests: list of maps (optional, max 200 items)
+//   - bookmarks: list of maps (optional, max 500 items)
+//   - studyTasks: list of maps (optional, max 500 items)
+//   - streak: number (optional, >= 0, max 10000)
+//   - lastSyncedAt: timestamp (optional)
+//   - createdAt: timestamp (optional, immutable)
+//   - updatedAt: timestamp (optional)
+//   - uid: string (optional, must match request.auth.uid)
+//   - email: string (optional, max 100 chars)
+//
+// Collection: /users/{userId}/** (subcollections: attempts, errorBook, conversations, etc.)
+// Document ID: auto-generated or scoped IDs
+// Fields: user-scoped private records (strictly isolated to owner userId)
+//
+// Collection: /questions/{questionId}
+// Document ID: Question ID
+// Fields:
+//   - id: string (optional, immutable on update, max 100 chars)
+//   - subject: string (required, 'physics' | 'chemistry' | 'mathematics')
+//   - chapterId: string (required, max 100 chars)
+//   - topicId: string (optional, max 100 chars)
+//   - type: string (optional, 'single_mcq' | 'multi_mcq' | 'numerical')
+//   - difficulty: string (required, 'easy' | 'medium' | 'hard')
+//   - questionText / text: string (at least one required, max 50000 chars)
+//   - options: list (optional, max 10 items)
+//   - correctAnswer: string, list, or number (required)
+//   - numericalTolerance: number (optional, >= 0)
+//   - explanation / solution: string (optional, max 50000 chars)
+//   - concepts / hints: list of strings (optional, max 20 items)
+//   - estimatedTimeSec: number (optional, 0-7200)
+//   - marks: number (optional, 0-50)
+//   - negativeMarks: number (optional, -20 to 0)
+//   - pyqYear / year: number (optional, 1970-2040)
+//   - pyqShift: string (optional, max 50 chars)
+//   - examType: string (optional, max 50 chars)
+//   - classLevel: number (optional, 11 or 12)
+//   - isAiGenerated: bool (optional)
+//   - trap: string (optional, max 5000 chars)
+//   - shortcut: string (optional, max 5000 chars)
+//   - createdAt: timestamp (optional, immutable)
+//   - updatedAt: timestamp (optional)
+//
+// Collection: /curriculum/{chapterId}
+// Document ID: Chapter ID
+// Fields:
+//   - id: string (required, max 100 chars, immutable on update)
+//   - subject: string (required, 'physics' | 'chemistry' | 'mathematics')
+//   - classLevel: number (required, 11 or 12)
+//   - name: string (required, max 200 chars)
+//   - unit: string (required, max 100 chars)
+//   - weightage: string (required, 'high' | 'medium' | 'low')
+//   - topics: list of maps (optional, max 50 items)
+//   - formulaList: list of strings (optional, max 200 items)
+//   - isRationalizedJEE2027: bool (required)
+//   - ncertPointers: list of strings (optional, max 100 items)
+//   - commonTraps: list of strings (optional, max 100 items)
+//   - shortcutsVsConcepts: list of strings (optional, max 100 items)
+//   - guide: map (optional)
+//   - createdAt: timestamp (optional, immutable)
+//   - updatedAt: timestamp (optional)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if user owns the resource path
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Verify admin authority strictly from Firebase Auth token custom claims
+    // NEVER rely on client-supplied document fields for role elevation
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin'
+      );
+    }
+
+    // Verify UID is not spoofed on document creation
+    function uidUnchanged() {
+      return !('uid' in request.resource.data) || request.resource.data.uid == request.auth.uid;
+    }
+
+    // Ensure uid field cannot be modified to hijack ownership on update
+    function uidNotModified() {
+      return !('uid' in request.resource.data) ||
+        (!('uid' in resource.data) && request.resource.data.uid == request.auth.uid) ||
+        ('uid' in resource.data && request.resource.data.uid == resource.data.uid);
+    }
+
+    // Validate required fields exist in incoming data
+    function hasRequiredFields(data, fields) {
+      return data.keys().hasAll(fields);
+    }
+
+    // Validate that only allowed fields are present (schema enforcement)
+    function hasOnlyAllowedFields(data, fields) {
+      return data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators: Users Collection
+    // ===============================================================
+
+    function isValidUserProfile(p) {
+      return p is map &&
+        hasOnlyAllowedFields(p, [
+          'name', 'classLevel', 'targetYear', 'targetExam',
+          'preparationLevel', 'targetRank', 'dailyStudyHours',
+          'weakSubjects', 'isOnboarded', 'joinedAt'
+        ]) &&
+        (!('name' in p) || (p.name is string && p.name.size() <= 100)) &&
+        (!('classLevel' in p) || p.classLevel in [11, 12, '11', '12', 'dropper']) &&
+        (!('targetYear' in p) || (p.targetYear is number && p.targetYear >= 2020 && p.targetYear <= 2040)) &&
+        (!('targetExam' in p) || p.targetExam in ['jee_main', 'jee_advanced']) &&
+        (!('preparationLevel' in p) || p.preparationLevel in ['beginner', 'intermediate', 'advanced']) &&
+        (!('targetRank' in p) || (p.targetRank is string && p.targetRank.size() <= 100)) &&
+        (!('dailyStudyHours' in p) || (p.dailyStudyHours is number && p.dailyStudyHours >= 0 && p.dailyStudyHours <= 24)) &&
+        (!('weakSubjects' in p) || (p.weakSubjects is list && p.weakSubjects.size() <= 10)) &&
+        (!('isOnboarded' in p) || p.isOnboarded is bool) &&
+        (!('joinedAt' in p) || (p.joinedAt is number && p.joinedAt > 0));
+    }
+
+    function isValidGamification(g) {
+      return g is map &&
+        hasOnlyAllowedFields(g, [
+          'xp', 'level', 'rankTitle', 'unlockedBadges', 'completedFocusBlocks'
+        ]) &&
+        (!('xp' in g) || (g.xp is number && g.xp >= 0 && g.xp <= 10000000)) &&
+        (!('level' in g) || (g.level is number && g.level >= 0 && g.level <= 1000)) &&
+        (!('rankTitle' in g) || (g.rankTitle is string && g.rankTitle.size() <= 100)) &&
+        (!('unlockedBadges' in g) || (g.unlockedBadges is list && g.unlockedBadges.size() <= 100)) &&
+        (!('completedFocusBlocks' in g) || (g.completedFocusBlocks is number && g.completedFocusBlocks >= 0 && g.completedFocusBlocks <= 100000));
+    }
+
+    function isValidUserDoc(data) {
+      return hasOnlyAllowedFields(data, [
+        'profile', 'gamification', 'attempts', 'errorBook',
+        'completedTests', 'bookmarks', 'studyTasks', 'streak',
+        'lastSyncedAt', 'createdAt', 'updatedAt', 'uid', 'email'
+      ]) &&
+        (!('profile' in data) || isValidUserProfile(data.profile)) &&
+        (!('gamification' in data) || isValidGamification(data.gamification)) &&
+        (!('attempts' in data) || (data.attempts is list && data.attempts.size() <= 1000)) &&
+        (!('errorBook' in data) || (data.errorBook is list && data.errorBook.size() <= 500)) &&
+        (!('completedTests' in data) || (data.completedTests is list && data.completedTests.size() <= 200)) &&
+        (!('bookmarks' in data) || (data.bookmarks is list && data.bookmarks.size() <= 500)) &&
+        (!('studyTasks' in data) || (data.studyTasks is list && data.studyTasks.size() <= 500)) &&
+        (!('streak' in data) || (data.streak is number && data.streak >= 0 && data.streak <= 10000)) &&
+        (!('lastSyncedAt' in data) || data.lastSyncedAt is timestamp) &&
+        (!('createdAt' in data) || data.createdAt is timestamp) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp) &&
+        (!('uid' in data) || (data.uid is string && data.uid == request.auth.uid)) &&
+        (!('email' in data) || (data.email is string && data.email.size() <= 100));
+    }
+
+    // ===============================================================
+    // Domain Validators: Questions Collection
+    // ===============================================================
+
+    function isValidQuestion(data) {
+      return hasOnlyAllowedFields(data, [
+        'id', 'subject', 'chapterId', 'topicId', 'type', 'difficulty',
+        'questionText', 'text', 'options', 'correctAnswer', 'numericalTolerance',
+        'explanation', 'solution', 'concepts', 'hints', 'estimatedTimeSec',
+        'marks', 'negativeMarks', 'pyqYear', 'year', 'pyqShift', 'examType',
+        'classLevel', 'isAiGenerated', 'trap', 'shortcut', 'createdAt', 'updatedAt'
+      ]) &&
+        hasRequiredFields(data, ['subject', 'chapterId', 'difficulty', 'correctAnswer']) &&
+        ('questionText' in data || 'text' in data) &&
+        data.subject in ['physics', 'chemistry', 'mathematics'] &&
+        data.difficulty in ['easy', 'medium', 'hard'] &&
+        (data.chapterId is string && data.chapterId.size() > 0 && data.chapterId.size() <= 100) &&
+        (!('id' in data) || (data.id is string && data.id.size() <= 100)) &&
+        (!('topicId' in data) || (data.topicId is string && data.topicId.size() <= 100)) &&
+        (!('type' in data) || data.type in ['single_mcq', 'multi_mcq', 'numerical']) &&
+        (!('questionText' in data) || (data.questionText is string && data.questionText.size() <= 50000)) &&
+        (!('text' in data) || (data.text is string && data.text.size() <= 50000)) &&
+        (!('options' in data) || (data.options is list && data.options.size() <= 10)) &&
+        (!('numericalTolerance' in data) || (data.numericalTolerance is number && data.numericalTolerance >= 0)) &&
+        (!('explanation' in data) || (data.explanation is string && data.explanation.size() <= 50000)) &&
+        (!('solution' in data) || (data.solution is string && data.solution.size() <= 50000)) &&
+        (!('concepts' in data) || (data.concepts is list && data.concepts.size() <= 20)) &&
+        (!('hints' in data) || (data.hints is list && data.hints.size() <= 20)) &&
+        (!('estimatedTimeSec' in data) || (data.estimatedTimeSec is number && data.estimatedTimeSec >= 0 && data.estimatedTimeSec <= 7200)) &&
+        (!('marks' in data) || (data.marks is number && data.marks >= 0 && data.marks <= 50)) &&
+        (!('negativeMarks' in data) || (data.negativeMarks is number && data.negativeMarks >= -20 && data.negativeMarks <= 0)) &&
+        (!('pyqYear' in data) || (data.pyqYear is number && data.pyqYear >= 1970 && data.pyqYear <= 2040)) &&
+        (!('year' in data) || (data.year is number && data.year >= 1970 && data.year <= 2040)) &&
+        (!('pyqShift' in data) || (data.pyqShift is string && data.pyqShift.size() <= 50)) &&
+        (!('examType' in data) || (data.examType is string && data.examType.size() <= 50)) &&
+        (!('classLevel' in data) || data.classLevel in [11, 12]) &&
+        (!('isAiGenerated' in data) || data.isAiGenerated is bool) &&
+        (!('trap' in data) || (data.trap is string && data.trap.size() <= 5000)) &&
+        (!('shortcut' in data) || (data.shortcut is string && data.shortcut.size() <= 5000)) &&
+        (!('createdAt' in data) || data.createdAt is timestamp) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function areQuestionImmutableFieldsUnchanged() {
+      return (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id) &&
+             (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // ===============================================================
+    // Domain Validators: Curriculum Collection
+    // ===============================================================
+
+    function isValidChapter(data) {
+      return hasOnlyAllowedFields(data, [
+        'id', 'subject', 'classLevel', 'name', 'unit', 'weightage',
+        'topics', 'formulaList', 'isRationalizedJEE2027', 'ncertPointers',
+        'commonTraps', 'shortcutsVsConcepts', 'guide', 'createdAt', 'updatedAt'
+      ]) &&
+        hasRequiredFields(data, ['id', 'subject', 'classLevel', 'name', 'unit', 'weightage', 'isRationalizedJEE2027']) &&
+        (data.id is string && data.id.size() > 0 && data.id.size() <= 100) &&
+        data.subject in ['physics', 'chemistry', 'mathematics'] &&
+        data.classLevel in [11, 12] &&
+        (data.name is string && data.name.size() > 0 && data.name.size() <= 200) &&
+        (data.unit is string && data.unit.size() > 0 && data.unit.size() <= 100) &&
+        data.weightage in ['high', 'medium', 'low'] &&
+        data.isRationalizedJEE2027 is bool &&
+        (!('topics' in data) || (data.topics is list && data.topics.size() <= 50)) &&
+        (!('formulaList' in data) || (data.formulaList is list && data.formulaList.size() <= 200)) &&
+        (!('ncertPointers' in data) || (data.ncertPointers is list && data.ncertPointers.size() <= 100)) &&
+        (!('commonTraps' in data) || (data.commonTraps is list && data.commonTraps.size() <= 100)) &&
+        (!('shortcutsVsConcepts' in data) || (data.shortcutsVsConcepts is list && data.shortcutsVsConcepts.size() <= 100)) &&
+        (!('guide' in data) || data.guide is map) &&
+        (!('createdAt' in data) || data.createdAt is timestamp) &&
+        (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    function areChapterImmutableFieldsUnchanged() {
+      return (!('id' in resource.data) || !('id' in request.resource.data) || request.resource.data.id == resource.data.id) &&
+             (!('createdAt' in resource.data) || !('createdAt' in request.resource.data) || request.resource.data.createdAt == resource.data.createdAt);
+    }
+
+    // ===============================================================
+    // Rules Definition
+    // ===============================================================
+
+    // 1. User Profiles & Sync Data: Strict Owner Isolation
+    // - Only the authenticated owner (request.auth.uid == userId) can read, create, update, or delete.
+    // - Cross-user access is strictly denied to safeguard student privacy and PII.
+    match /users/{userId} {
+      allow read, delete: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserDoc(request.resource.data) && uidUnchanged();
+      allow update: if isOwner(userId) && isValidUserDoc(request.resource.data) && uidNotModified();
+
+      // 2. User Subcollections (attempts, errorBook, conversations, etc.)
+      // - Inherits strict owner isolation; only request.auth.uid == userId can read/write.
+      // - Prevents setting a foreign userId/uid inside subcollection documents.
+      match /{allSubcollections=**} {
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId) &&
+          (!('userId' in request.resource.data) || request.resource.data.userId == userId) &&
+          (!('uid' in request.resource.data) || request.resource.data.uid == userId);
+      }
+    }
+
+    // 3. Question Bank: Public Read for practice; Admin-only Write
+    // - Unauthenticated and authenticated students can query and read practice questions.
+    // - Only administrative tokens (request.auth.token.admin == true) can create, update, or delete.
+    // - Enforces strict schema, type safety, DoS string/array limits, and immutable fields.
+    match /questions/{questionId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidQuestion(request.resource.data);
+      allow update: if isAdmin() && isValidQuestion(request.resource.data) && areQuestionImmutableFieldsUnchanged();
+      allow delete: if isAdmin();
+    }
+
+    // 4. Curriculum Chapters: Public Read; Admin-only Write
+    // - Public read access allows all students to browse syllabus and chapter blueprints.
+    // - Writes are restricted to administrative tokens with full schema validation.
+    match /curriculum/{chapterId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidChapter(request.resource.data);
+      allow update: if isAdmin() && isValidChapter(request.resource.data) && areChapterImmutableFieldsUnchanged();
+      allow delete: if isAdmin();
+    }
+
+    // 5. Default Deny-All for any undefined paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

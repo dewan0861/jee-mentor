@@ -33,6 +33,9 @@ export default function DashboardPage() {
   const [selectedSubjectTab, setSelectedSubjectTab] = useState<Subject>('physics');
   const [selectedClassTab, setSelectedClassTab] = useState<11 | 12 | 'all'>('all');
   const [matrixPage, setMatrixPage] = useState(1);
+  const [profile, setProfile] = useState(StorageService.getUserProfile());
+  const [gamification, setGamification] = useState(StorageService.getGamificationProfile());
+  const [dueErrorsCount, setDueErrorsCount] = useState(0);
 
   const CHAPTERS_PER_PAGE = 6;
 
@@ -41,6 +44,9 @@ export default function DashboardPage() {
     setUnresolvedErrors(StorageService.getErrorBook().filter((e) => !e.resolved));
     setAttempts(StorageService.getAttempts());
     setCompletedTests(StorageService.getCompletedTests());
+    setProfile(StorageService.getUserProfile());
+    setGamification(StorageService.getGamificationProfile());
+    setDueErrorsCount(StorageService.getDueErrorsCount());
   }, []);
 
   // Compute subject accuracy stats
@@ -86,45 +92,52 @@ export default function DashboardPage() {
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3.5 py-1 text-xs font-semibold backdrop-blur-md border border-white/10 mb-3">
             <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>Target: JEE Main & Advanced 2027</span>
+            <span>Target: JEE {profile.targetYear || 2027} • {profile.targetRank}</span>
           </div>
           <h1 className="text-2xl sm:text-4xl font-black tracking-tight leading-tight">
-            Consistency Beats Intensity.
+            {profile.name ? `Keep Pushing, ${profile.name}!` : 'Consistency Beats Intensity.'}
           </h1>
           <p className="mt-2 text-xs sm:text-sm text-slate-300 leading-relaxed">
-            Welcome to your daily JEE command center. Work through targeted PYQs, resolve concepts in your Error Book, and build deep problem-solving intuition with your Socratic AI Tutor.
+            Welcome to your daily JEE command center. Daily target: <strong className="text-indigo-300">{profile.dailyStudyHours || 4} hrs/day</strong>. Calibrated for Class {profile.classLevel}.
           </p>
 
           <div className="mt-6 flex flex-wrap items-center gap-2.5 sm:gap-3">
             <Link
-              href="/practice"
+              href="/planner"
               className="flex items-center gap-2 rounded-xl bg-indigo-500 px-4 sm:px-5 py-2.5 text-xs font-extrabold text-white shadow-md hover:bg-indigo-600 transition-colors"
             >
               <Target className="h-4 w-4" />
-              <span>Daily Practice Sprint</span>
+              <span>Today's Study Checklist</span>
             </Link>
             <Link
-              href="/test"
+              href="/practice"
               className="flex items-center gap-2 rounded-xl bg-white/10 px-4 sm:px-5 py-2.5 text-xs font-bold text-white backdrop-blur-md border border-white/20 hover:bg-white/20 transition-colors"
             >
-              <Timer className="h-4 w-4 text-amber-300" />
-              <span>Mock Exam</span>
+              <Zap className="h-4 w-4 text-amber-300" />
+              <span>Practice PYQs</span>
             </Link>
             <Link
-              href="/tutor"
+              href="/analytics"
               className="flex items-center gap-2 rounded-xl bg-white/10 px-3.5 sm:px-4 py-2.5 text-xs font-bold text-white backdrop-blur-md border border-white/20 hover:bg-white/20 transition-colors"
             >
-              <Sparkles className="h-4 w-4 text-indigo-300" />
-              <span>Ask AI Mentor</span>
+              <TrendingUp className="h-4 w-4 text-emerald-300" />
+              <span>Analytics</span>
             </Link>
           </div>
         </div>
 
-        {/* Streak Floating Card */}
-        <div className="mt-6 sm:mt-0 sm:absolute sm:top-8 sm:right-8 rounded-2xl bg-white/10 p-4 sm:p-5 backdrop-blur-lg border border-white/15 text-center sm:w-44">
-          <Flame className="mx-auto h-7 w-7 text-amber-400 fill-amber-400 mb-1" />
-          <span className="text-2xl sm:text-3xl font-black">{streak} Days</span>
-          <p className="text-[11px] font-semibold text-slate-300 mt-0.5">Study Consistency</p>
+        {/* Streak & XP Floating Card */}
+        <div className="mt-6 sm:mt-0 sm:absolute sm:top-8 sm:right-8 flex flex-row sm:flex-col gap-3">
+          <div className="flex-1 rounded-2xl bg-white/10 p-3 sm:p-4 backdrop-blur-lg border border-white/15 text-center sm:w-44">
+            <Flame className="mx-auto h-6 w-6 text-amber-400 fill-amber-400 mb-0.5" />
+            <span className="text-xl sm:text-2xl font-black">{streak} Days</span>
+            <p className="text-[10px] font-semibold text-slate-300">Study Streak</p>
+          </div>
+          <div className="flex-1 rounded-2xl bg-white/10 p-3 sm:p-4 backdrop-blur-lg border border-white/15 text-center sm:w-44">
+            <Award className="mx-auto h-6 w-6 text-purple-300 mb-0.5" />
+            <span className="text-sm sm:text-base font-black text-purple-200">Lvl {gamification.level} • {gamification.xp} XP</span>
+            <p className="text-[10px] font-semibold text-slate-300 truncate">{gamification.rankTitle}</p>
+          </div>
         </div>
       </div>
 

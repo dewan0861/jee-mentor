@@ -27,6 +27,7 @@ import {
   Printer
 } from 'lucide-react';
 import Link from 'next/link';
+import { ChapterVideoResources } from '@/components/ChapterVideoResources';
 
 function CurriculumContent() {
   const searchParams = useSearchParams();
@@ -356,7 +357,13 @@ function CurriculumContent() {
                 </div>
 
                 {/* Practice & Cheatsheet Action Buttons */}
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                  <ChapterVideoResources
+                    chapterId={activeChapter.id}
+                    chapterName={activeChapter.name}
+                    subject={activeChapter.subject}
+                  />
+
                   <Link
                     href={`/curriculum/cheatsheet?chapter=${activeChapter.id}`}
                     className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 sm:px-3.5 py-2.5 text-xs font-bold text-slate-700 shadow-2xs hover:bg-slate-50 transition-colors"

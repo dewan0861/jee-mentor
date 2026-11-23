@@ -9,12 +9,13 @@ import {
   CheckCircle2, 
   Timer, 
   AlertTriangle, 
-  Sparkles 
+  Sparkles,
+  Calendar
 } from 'lucide-react';
 
 const NAV_ITEMS = [
   { label: 'Home', href: '/', icon: GraduationCap },
-  { label: 'Syllabus', href: '/curriculum', icon: BookOpen },
+  { label: 'Planner', href: '/planner', icon: Calendar },
   { label: 'Practice', href: '/practice', icon: CheckCircle2 },
   { label: 'Mock Test', href: '/test', icon: Timer },
   { label: 'Errors', href: '/error-book', icon: AlertTriangle },

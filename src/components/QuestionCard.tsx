@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Question, MistakeCategory } from '@/types';
 import { MathRenderer } from './MathRenderer';
-import { CheckCircle, XCircle, Flag, Sparkles, BookOpen, Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { CheckCircle, XCircle, Flag, Sparkles, BookOpen, Clock, ChevronDown, ChevronUp, Bookmark } from 'lucide-react';
+import { StorageService } from '@/lib/storage';
 import Link from 'next/link';
 
 interface QuestionCardProps {
@@ -33,6 +34,26 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
 }) => {
   const [showSolution, setShowSolution] = useState(false);
   const [selectedMistake, setSelectedMistake] = useState<MistakeCategory | null>(null);
+  const [isBookmarked, setIsBookmarked] = useState(false);
+
+  useEffect(() => {
+    setIsBookmarked(StorageService.isBookmarked(question.id));
+  }, [question.id]);
+
+  const handleToggleBookmark = () => {
+    const isNow = StorageService.toggleBookmark({
+      itemId: question.id,
+      itemType: 'question',
+      subject: question.subject,
+      chapterId: question.chapterId,
+      title: question.questionText || question.text || 'JEE Practice Question',
+      data: {
+        questionText: question.questionText || question.text,
+        subject: question.subject,
+      },
+    });
+    setIsBookmarked(isNow);
+  };
 
   const isAnswered = selectedAnswer !== undefined && selectedAnswer !== '';
   const isCorrect =
@@ -93,6 +114,19 @@ export const QuestionCard: React.FC<QuestionCardProps> = ({
           <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
             +{qMarks} / -{qNegMarks}
           </span>
+          <button
+            type="button"
+            onClick={handleToggleBookmark}
+            className={`flex items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-semibold transition-colors ${
+              isBookmarked
+                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+            title={isBookmarked ? 'Remove bookmark' : 'Bookmark this question'}
+          >
+            <Bookmark className={`h-3.5 w-3.5 ${isBookmarked ? 'fill-amber-500 text-amber-500' : ''}`} />
+            <span>{isBookmarked ? 'Saved' : 'Save'}</span>
+          </button>
           {onToggleReview && (
             <button
               onClick={onToggleReview}
